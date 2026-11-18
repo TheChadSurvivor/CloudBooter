@@ -40,7 +40,7 @@ Both scripts inventory resources, enforce free-tier checks, generate Terraform, 
 
 - VCN, public subnet, internet gateway, route table
 - Security list with SSH ingress (optional extra ports)
-- One Arm A1 instance: 2 OCPU / 12 GB, 200 GB boot @ 120 VPU
+- One Arm A1 instance: 2 OCPU / 12 GB, 200 GB boot @ 10 VPU (Balanced)
 - ed25519 keys under `./ssh_keys/`
 - `cloud-init.yaml` for basic first-boot setup
 

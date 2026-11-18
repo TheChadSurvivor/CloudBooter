@@ -10,7 +10,7 @@ $names = @(
     'safe_jq', 'tokenize_cmd_string', 'inventory_compute_instances',
     'inventory_networking_resources', 'inventory_storage_resources',
     'Wait-ForInstanceState', 'Resize-LegacyArmInstances', 'out_of_capacity_auto_apply',
-    'load_existing_config', 'create_terraform_variables', 'create_terraform_block_volumes',
+    'load_existing_config', 'create_terraform_variables', 'create_terraform_block_volumes', 'create_terraform_main',
     'convert_to_hcl_string', 'get_terraform_auth_config', 'read_oci_config_value', 'create_terraform_provider'
 )
 $functions = $sourceAst.FindAll({
@@ -135,6 +135,24 @@ locals {
     Assert-True ($blockHcl.Contains('arm_block_volume_indices = [for index, size in local.arm_block_volume_sizes : index if size > 0]')) 'Disk original indices were lost'
     Assert-True ($blockHcl.Contains('oci_core_instance.arm[local.arm_block_volume_indices[count.index]].id')) 'Disk attachment does not use original instance index'
     Assert-True ($blockHcl.Contains('local.arm_flex_hostnames[local.arm_block_volume_indices[count.index]]')) 'Disk names do not use original instance index'
+    # Boot performance must use Balanced, with all canonical layers in sync.
+    $powershellSource = Get-Content $sourcePath -Raw
+    Assert-True ($powershellSource -match '\$FREE_TIER_BOOT_VOLUME_VPU\s*=\s*(\d+)') 'PowerShell boot performance constant missing'
+    $FREE_TIER_BOOT_VOLUME_VPU = [int]$matches[1]
+    Assert-Equal $FREE_TIER_BOOT_VOLUME_VPU 10 'Boot volume performance must use the Balanced default'
+    create_terraform_main
+    $mainHcl = Get-Content 'main.tf' -Raw
+    Assert-True ($mainHcl -match 'boot_volume_vpus_per_gb\s*=\s*10\b') 'Generated boot volume selects paid Ultra High Performance'
+    Assert-True (-not ($mainHcl -match 'boot_volume_vpus_per_gb\s*=\s*120\b')) 'Legacy Ultra High Performance leaked into Terraform'
+    $pythonConstants = Get-Content (Join-Path $providerRoot 'src/cloudbooter/free_tier.py') -Raw
+    Assert-True ($pythonConstants -match 'boot_volume_vpu:\s*int\s*=\s*10\b') 'Canonical OCI performance constant differs from PowerShell'
+    $pythonTests = Get-Content (Join-Path $providerRoot 'tests/test_free_tier.py') -Raw
+    Assert-True ($pythonTests.Contains('assert LIMITS.boot_volume_vpu == 10')) 'Canonical OCI test expects different boot performance'
+    foreach ($relativeDoc in @('README.md', 'docs/FREE_TIER_LIMITS.md', 'docs/QUICKSTART.md')) {
+        $docText = Get-Content (Join-Path $providerRoot $relativeDoc) -Raw
+        Assert-True ($docText.Contains('10 VPU (Balanced)')) "Boot performance documentation differs: $relativeDoc"
+        Assert-True (-not $docText.Contains('120 VPU')) "Outdated boot performance documentation: $relativeDoc"
+    }
     # Non-default profiles and API-key custom configs must reach Terraform.
     $_ociHome = Join-Path $temporaryRoot 'user-home'
     $OCI_PROFILE = 'TEAM'
@@ -175,6 +193,7 @@ key_file=./fake-api-key.pem
     finally { $env:OCI_CLI_AUTH = $originalCliAuth }
     $bashSource = Get-Content (Join-Path $providerRoot 'setup_oci_terraform.sh') -Raw
     Assert-True ($bashSource.Contains('oci_core_instance.arm[local.arm_block_volume_indices[count.index]].id')) 'Bash generator has a different disk attachment mapping'
+    Assert-True ($bashSource.Contains('FREE_TIER_BOOT_VOLUME_VPU=10')) 'Bash boot performance differs from canonical Balanced default'
     Assert-True ($bashSource.Contains('required_version = ">= 1.5"')) 'Bash check blocks require Terraform 1.5 or later'
     foreach ($mapping in @('apikey) provider_auth="APIKey"', 'securitytoken) provider_auth="SecurityToken"', 'instanceprincipal) provider_auth="InstancePrincipal"', 'resourceprincipal) provider_auth="ResourcePrincipal"')) {
         Assert-True ($bashSource.Contains($mapping)) "Bash provider auth mapping missing: $mapping"
