@@ -143,6 +143,8 @@ locals {
     create_terraform_main
     $mainHcl = Get-Content 'main.tf' -Raw
     Assert-True ($mainHcl -match 'boot_volume_vpus_per_gb\s*=\s*10\b') 'Generated boot volume selects paid Ultra High Performance'
+    Assert-True ($mainHcl -match 'protocol\s*=\s*"58"\s+source\s*=\s*"::/0"') 'IPv6 ICMP ingress must use ICMPv6 protocol 58'
+    Assert-True (-not ($mainHcl -match 'protocol\s*=\s*"1"\s+source\s*=\s*"::/0"')) 'IPv4 ICMP protocol was used with an IPv6 source'
     Assert-True (-not ($mainHcl -match 'boot_volume_vpus_per_gb\s*=\s*120\b')) 'Legacy Ultra High Performance leaked into Terraform'
     $pythonConstants = Get-Content (Join-Path $providerRoot 'src/cloudbooter/free_tier.py') -Raw
     Assert-True ($pythonConstants -match 'boot_volume_vpu:\s*int\s*=\s*10\b') 'Canonical OCI performance constant differs from PowerShell'
@@ -203,6 +205,7 @@ key_file=./fake-api-key.pem
     Assert-True ($bashSource.Contains('the Bash generator does not support a custom OCI_CONFIG_FILE.')) 'Custom Bash config path must fail clearly'
     Assert-True ($bashSource.Contains('create_terraform_provider || return $?')) 'Bash generation ignores a provider authentication failure'
     Assert-True ($bashSource.Contains('jq -Rs')) 'Bash provider values must use JSON escaping'
+    Assert-True (-not ($bashSource -match 'protocol\s*=\s*"1"\s+source\s*=\s*"::/0"')) 'Bash must not use IPv4 ICMP protocol with an IPv6 source'
 }
 finally {
     Pop-Location

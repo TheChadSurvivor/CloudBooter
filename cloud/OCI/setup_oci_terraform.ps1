@@ -3677,9 +3677,9 @@ resource "oci_core_default_security_list" "main" {
     protocol = "1"
     source   = "0.0.0.0/0"
   }
-  # ICMP (IPv6)
+  # ICMPv6
   ingress_security_rules {
-    protocol = "1"
+    protocol = "58"
     source   = "::/0"
   }
 }
